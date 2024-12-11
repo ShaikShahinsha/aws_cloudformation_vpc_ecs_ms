@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a network stack with a public vpc, fargate cluster and load balancer as a parent stack. 
+
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: '10.0.0.0/16'
+    PublicOne:
+      CIDR: '10.0.0.0/24'
+    PublicTwo:
+      CIDR: '10.0.1.0/24'
+
+Resources:
+  FargateVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap ['SubnetConfig','VPC','CIDR']
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+
+  PublicOneSubnet:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap ['SubnetConfig','PublicOne','CIDR']
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+
+  PublicTwoSubnet:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap ['SubnetConfig','PublicTwo','CIDR']
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
