@@ -151,6 +151,169 @@ Resources:
               - 'elasticloadbalancing:RegisterTargets'
             Resource: '*'
 
+#Security Groups 
+#1. Load Balancer - 0.0.0.0/0
+#2. Fargate Container Security Group 
+    #rule1 - Allow traffic only from LoadBalncer
+    #rule2 - Allow traffic internally
+
+  PublicLoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Access to the public facing load balancer from entire internet range 
+        VpcId: !Ref FargateVpc
+        SecurityGroupIngress: 
+          - CidrIp: 0.0.0.0/0
+            IpProtocol: -1
+# Fargate Container Security Group 
+  FargateContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Access to the Fargatecontainer 
+        VpcId: !Ref FargateVpc 
+
+  EcsSecurityGroupIngressFromPublicALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties: 
+      Description: Ingress from public ALB to containers
+      GroupId: !Ref FargateContainerSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref PublicLoadBalancerSG
+  
+  EcsSecurityGroupIngressFromSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties: 
+      Description: Ingress within the group of containers in Vpc for internal communcation 
+      GroupId: !Ref FargateContainerSecurityGroup
+      IpProtocol : -1 
+      SourceSecurityGroupId: !Ref FargateContainerSecurityGroup
+
+# creation of LoadBalncer #T4agetGroup #Listener 
+
+# Load Balancer Security group
+  PublicLoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access to the public facing load balancer from entire internet range
+      VpcId: !Ref FargateVpc
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: -1
+
+# Fargate Container Security Group
+  FargateContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Access to fargate containers
+      VpcId: !Ref FargateVpc    
+
+  EcsSecurityGroupIngressFromPublicALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from the public ALB 
+      GroupId: !Ref FargateContainerSecurityGroup   
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref PublicLoadBalancerSG
+
+  EcsSecurityGroupIngressFromSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from other containers in the same security group 
+      GroupId: !Ref FargateContainerSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref FargateContainerSecurityGroup
+
+# Load Balancer
+  PublicLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer 
+    Properties:
+      Scheme: internet-facing 
+      LoadBalancerAttributes: 
+        - Key: idle_timeout.timeout_seconds
+          Value: '30'
+      Subnets: 
+        - !Ref PublicSubnetOne 
+        - !Ref PublicSubnetTwo 
+      SecurityGroups: [!Ref 'PublicLoadBalancerSG']      
+    
+# Target Group
+  DummyTargetGroupPublic:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 6
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: !Join ['-', [!Ref 'AWS::StackName', 'drop-1']]
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref 'FargateVpc'
+
+# Listener
+  PublicLoadBalancerListener: 
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn:  
+      - PublicLoadBalancer     
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref 'DummyTargetGroupPublic'
+          Type: 'forward'
+      LoadBalancerArn: !Ref 'PublicLoadBalancer'      
+      Port: 80
+      Protocol: HTTP    
+Outputs:
+  VPCId:
+    Description: The ID of the vpc that this stack is deployed on 
+    Value: !Ref FargateVpc
+    Export: 
+      Name: !Join [':', [!Ref 'AWS::StackName', 'VPCId']]      
+  PublicSubnetOne:
+    Description: Public subnet one
+    Value: !Ref 'PublicSubnetOne'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'PublicSubnetOne' ] ]
+  PublicSubnetTwo:
+    Description: Public subnet two
+    Value: !Ref 'PublicSubnetTwo'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'PublicSubnetTwo' ] ]
+  FargateContainerSecurityGroup:
+    Description: A security group used to allow Fargate containers to receive traffic
+    Value: !Ref 'FargateContainerSecurityGroup'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'FargateContainerSecurityGroup' ] ]      
+# ECS Outputs      
+  ClusterName:
+    Description: The name of the ECS cluster
+    Value: !Ref 'ECSCluster'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ClusterName' ] ]
+  ECSRole:
+    Description: The ARN of the ECS role
+    Value: !GetAtt 'ECSRole.Arn'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ECSRole' ] ]
+  ECSTaskExecutionRole:
+    Description: The ARN of the ECS role
+    Value: !GetAtt 'ECSTaskExecutionRole.Arn'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ECSTaskExecutionRole' ] ]
+  PublicListener:
+    Description: The ARN of the public load balancer's Listener
+    Value: !Ref PublicLoadBalancerListener
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'PublicListener' ] ]          
+  ExternalUrl:
+    Description: The url of the external load balancer
+    Value: !Join ['', ['http://', !GetAtt 'PublicLoadBalancer.DNSName']]
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ExternalUrl' ] ]            
+
+
+
+
 
 
   
